@@ -8,7 +8,7 @@ import numpy as np
 
 Number_trials = 1000
 
-Arch = ao.Arch(arch_i=[20, 20], arch_z=[1])
+Arch = ao.Arch(arch_i=[20, 20], arch_z=[10])
 Agent = ao.Agent(Arch=Arch)
 
 Agent.save = False
@@ -65,16 +65,29 @@ for row in df[0:Number_trials].iterrows():
     input_data = np.append(binary_embedding, binary_amount)  # Combine the binary embedding with the binary amount
 
     for i in range(5): # For convergence, we will run the agent 5 times
-        response = Agent.next_state(INPUT=input_data)
+        raw_response = Agent.next_state(INPUT=input_data)
 
-    Agent.reset_state()  
+    Agent.reset_state()
 
-    if response[0] == class_type:
-        Agent.next_state(INPUT=input_data, LABEL=response)
-        correct+=1
+
+    response = 0
+    if sum(raw_response) > 5:
+        responsse = 1
     else:
-        Agent.next_state(INPUT=input_data, LABEL=[abs(1-response[0])])  # If the response is not equal to the class type, then we will label it as the opposite class
+        response = 0  
+
+    if class_type == 1:
+        Agent.next_state(INPUT=input_data, LABEL=[1,1,1,1,1,1,1,1,1,1])
+    else:
+        Agent.next_state(INPUT=input_data, LABEL=[0,0,0,0,0,0,0,0,0,0])
+
+    if response == class_type:
+        correct += 1
+
 
     Agent.reset_state()  
+
+    if row[0] % 100 == 0:
+        print("Trial: ", row[0], " Correct: ", correct)
 
 print("amount correct: ", correct/Number_trials)
