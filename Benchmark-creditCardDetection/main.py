@@ -5,8 +5,13 @@ import ao_embeddings.binaryEmbeddings as be
 from config import OPENAI_KEY
 import numpy as np
 
+
+Number_trials = 1000
+
 Arch = ao.Arch(arch_i=[20, 20], arch_z=[1])
 Agent = ao.Agent(Arch=Arch)
+
+Agent.save = False
 
 embeddingToBinary = be.binaryEmbeddings(OPENAI_KEY, numberBinaryDigits=20)
 
@@ -22,6 +27,8 @@ df = pd.read_csv(path+ "/creditcard_2023.csv")
 # Vs 0-28 are anonymized features such as time, location, and other transaction details. I am going to be refering to v1 to v28 as feature embeddings.
 
 """
+
+
     id        V1        V2        V3        V4        V5        V6        V7        V8        V9       V10  ...       V20       V21       V22       V23       V24       V25       V26       V27       V28    Amount  Class
 0   0 -0.260648 -0.469648  2.496266 -0.083724  0.129681  0.732898  0.519014 -0.130006  0.727159  0.637735  ...  0.091202 -0.110552  0.217606 -0.134794  0.165959  0.126280 -0.434824 -0.081230 -0.151045  17982.10      0
 1   1  0.985100 -0.356045  0.558056 -0.429654  0.277140  0.428605  0.406466 -0.133118  0.347452  0.529808  ... -0.233984 -0.194936 -0.605761  0.079469 -0.577395  0.190090  0.296503 -0.248052 -0.064512   6531.37      0
@@ -41,12 +48,12 @@ df = df.sample(frac=1).reset_index()
 
 correct = 0
 
-for row in df[0:100].iterrows():
+for row in df[0:Number_trials].iterrows():
     amount  = row[1]["Amount"]
     class_type = row[1]["Class"]
     feature_embedding  = row[1][1:29].values  # V1 to V28
 
-    binary_embedding = embeddingToBinary.embeddingToBinary(feature_embedding)
+    binary_embedding = embeddingToBinary.embeddingToBinary(feature_embedding) # This uses a guassian random projection to convert the feature embedding to a binary embedding
     binary_amount = convertAmountToBinary(amount)
     binary_amount_list = []
     
@@ -57,8 +64,10 @@ for row in df[0:100].iterrows():
 
     input_data = np.append(binary_embedding, binary_amount)  # Combine the binary embedding with the binary amount
 
+    for i in range(5): # For convergence, we will run the agent 5 times
+        response = Agent.next_state(INPUT=input_data)
 
-    response = Agent.next_state(INPUT=input_data)
+    Agent.reset_state()  
 
     if response[0] == class_type:
         Agent.next_state(INPUT=input_data, LABEL=response)
@@ -66,6 +75,6 @@ for row in df[0:100].iterrows():
     else:
         Agent.next_state(INPUT=input_data, LABEL=[abs(1-response[0])])  # If the response is not equal to the class type, then we will label it as the opposite class
 
-    # Will be doing a Guassian random projection to reduce the dimensionality of the feature embeddings
+    Agent.reset_state()  
 
-print("amount correct: ", correct/100)
+print("amount correct: ", correct/Number_trials)
