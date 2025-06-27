@@ -24,13 +24,13 @@ path = kagglehub.dataset_download("nelgiriyewithana/credit-card-fraud-detection-
 df = pd.read_csv(path+ "/creditcard_2023.csv")
 
 # Shuffle the entire DataFrame
-df = df.sample(frac=1, random_state=42).reset_index(drop=True)
+df = df.sample(frac=1, random_state=42).reset_index()
 
 # -----------------------------
 # 2) SPLIT INTO TRAIN / TEST
 # -----------------------------
 # Assume exactly 1000 rows for consistency with your code; if you have more, adjust accordingly
-Number_trials = 1000
+Number_trials = 10000
 df = df.iloc[:Number_trials]  # (optional) limit to first 1000 rows
 
 # 80% train / 20% test

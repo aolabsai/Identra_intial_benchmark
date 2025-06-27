@@ -1,14 +1,8 @@
 import kagglehub
 import pandas as pd
 import ao_core as ao
+from config import OPENAI_KEY
 import numpy as np
-
-Number_trials = 1000
-
-num_train = Number_trials*0.8
-num_test = Number_trials*0.2
-
-Arch = ao.Arch(arch_i=[20,28], arch_z=[10])
 
 # This seems like the best dataset to use since it is pretty very balenced , 1:1 
 
@@ -23,19 +17,25 @@ df = pd.read_csv(path+ "/creditcard_2023.csv")
 
 """
 
-    index      id        V1        V2        V3        V4        V5        V6        V7        V8  ...       V21       V22       V23       V24       V25       V26       V27       V28    Amount  Class
-0  268028  268028  1.738680 -0.539571  0.343099 -0.478460  0.007520 -0.014745  0.286824 -0.171451  ... -0.154207 -0.256802  0.338387 -0.135488 -0.670516 -2.436082 -0.171585 -0.168325   6581.16      0
-1  303113  303113 -1.261394 -2.382550 -0.710428 -0.101410 -0.612158 -0.351779 -0.079762  0.151195  ...  0.077080 -0.046480 -2.568478 -0.637696 -0.412118 -0.766365 -0.126987 -2.419861  18331.09      1
-2  460564  460564  0.933925 -0.303537  0.939915  0.301283  0.258574  0.767255  0.393672 -0.106449  ... -0.168061 -0.311770  0.040239  0.034921  0.489564 -0.237276 -0.218340 -0.082958  13572.00      1
-3  267441  267441  0.205243 -0.073504  0.172032 -0.094131  0.326669 -0.171375  0.621503 -0.141087  ...  0.073212  1.307278 -0.027531  0.082045 -1.574954  0.367257  0.004532  0.415400  15238.23      0
-4  143691  143691 -0.252363 -0.348904  1.333573 -0.709723  0.301442  0.239007  0.390342  0.005781  ... -0.061605  0.006577 -0.303214  0.097200  0.218744  0.659125 -0.319743 -0.261463   5581.06      0
+    id        V1        V2        V3        V4        V5        V6        V7        V8        V9       V10  ...       V20       V21       V22       V23       V24       V25       V26       V27       V28    Amount  Class
+0   0 -0.260648 -0.469648  2.496266 -0.083724  0.129681  0.732898  0.519014 -0.130006  0.727159  0.637735  ...  0.091202 -0.110552  0.217606 -0.134794  0.165959  0.126280 -0.434824 -0.081230 -0.151045  17982.10      0
+1   1  0.985100 -0.356045  0.558056 -0.429654  0.277140  0.428605  0.406466 -0.133118  0.347452  0.529808  ... -0.233984 -0.194936 -0.605761  0.079469 -0.577395  0.190090  0.296503 -0.248052 -0.064512   6531.37      0
+2   2 -0.260272 -0.949385  1.728538 -0.457986  0.074062  1.419481  0.743511 -0.095576 -0.261297  0.690708  ...  0.361652 -0.005020  0.702906  0.945045 -1.154666 -0.605564 -0.312895 -0.300258 -0.244718   2513.54      0
+3   3 -0.152152 -0.508959  1.746840 -1.090178  0.249486  1.143312  0.518269 -0.065130 -0.205698  0.575231  ... -0.378223 -0.146927 -0.038212 -0.214048 -1.893131  1.003963 -0.515950 -0.165316  0.048424   5384.44      0
+4   4 -0.206820 -0.165280  1.527053 -0.448293  0.106125  0.530549  0.658849 -0.212660  1.049921  0.968046  ...  0.247237 -0.106984  0.729727 -0.161666  0.312561 -0.414116  1.071126  0.023712  0.419117  14278.97      0
 """
 
 # shuffle the dataset
 
+
 df = df.sample(frac=1).reset_index()
 
-# print(df.head())
+correct = 0
+
+def float_to_binary(embedding, threshold=0):  # The most basic conversion function. if input is greater than threshold, it will be 1, else 0
+  """Converts a float32 embedding to a binary embedding."""
+  binary_embedding = np.where(embedding > threshold, 1, 0)
+  return binary_embedding
 
 
 def convertAmountToBinary(amount):
@@ -44,16 +44,19 @@ def convertAmountToBinary(amount):
     binary_amount = format(int(int_amount), "020b")
     return binary_amount
 
-def convertFeatureEmbeddingToBinary(embedding, threshold=0):
-    """Converts a float32 embedding to a binary embedding."""
-    binary_embedding = np.where(embedding > threshold, 1, 0)
-    return binary_embedding
+def convertFeatureEmbeddingToBinary(feature_embedding):
+    # Convert the feature embedding to binary using Gaussian random projection. This is using our ao embeddings library where we had sucess with word embeddings
+    binary_code = float_to_binary(feature_embedding)
+    return binary_code
 
-def run_ao_becnhmark():
-
-    Agent = ao.Agent(Arch=Arch)
-
+def runTrials(Number_trials):
     correct = 0
+
+    num_train = Number_trials*0.8
+    num_test = Number_trials*0.2
+
+    Arch = ao.Arch(arch_i=[20,28], arch_z=[10])
+    Agent = ao.Agent(Arch=Arch)
 
     training_df = df.sample(frac=0.8, random_state=42)  # 80% for training
     test_df = df.drop(training_df.index)  # Remaining 20% for testing
@@ -64,7 +67,7 @@ def run_ao_becnhmark():
     for row in training_df[0:int(num_train)].iterrows():
         amount  = row[1]["Amount"]
         class_type = row[1]["Class"]
-        feature_embedding  = row[1][2:30].values  # V1 to V28
+        feature_embedding  = row[1][1:29].values  # V1 to V28
         
 
 
@@ -95,7 +98,7 @@ def run_ao_becnhmark():
     for row in test_df[0:int(num_test)].iterrows():
         amount  = row[1]["Amount"]
         class_type = row[1]["Class"]
-        feature_embedding  = row[1][2:30].values  # V1 to V28, 
+        feature_embedding  = row[1][1:29].values  # V1 to V28
 
         binary_embedding = convertFeatureEmbeddingToBinary(feature_embedding) 
         binary_amount = convertAmountToBinary(amount)
@@ -133,21 +136,14 @@ def run_ao_becnhmark():
         if row[0] % 100 == 0:
             print("Trial: ", row[0], " Correct: ", correct)
 
-    return correct
-
+    print("amount correct: ", correct/num_test)
+    return correct/num_test
 
 if __name__ == "__main__":
-    num_tests = [10, 100]
-    accuracy_list = []
-    for num_test in num_tests:
-        print(f"Running benchmark with {num_test} tests...")
-        amount_correct = run_ao_becnhmark()
-        accuracy = amount_correct / num_test
-        accuracy_list.append(accuracy)
-        print("Accuracy: ", accuracy)
-
-        
-print("Tests: ", num_tests)
-print("Final Accuracy List: ", accuracy_list)
-
-
+    trials_array= [10,100,1000]
+    acc_array = []
+    for trials in trials_array:
+        print("Running trials: ", trials)
+        acc = runTrials(trials)
+        acc_array.append(acc)
+        print("Accuracy for trials ", trials, ": ", acc)
