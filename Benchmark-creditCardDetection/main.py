@@ -1,17 +1,49 @@
 import kagglehub
 import pandas as pd
 import ao_core as ao
+from ao_embeddings import binaryEmbeddings as be
 from config import OPENAI_KEY
 import numpy as np
+from datetime import datetime
 
-# This seems like the best dataset to use since it is pretty very balenced , 1:1 
+type_of_conversion = "q"    # or "gaussian" for Gaussian random projection. Threshold seems to work better 
+
+
+# This seems like the best dataset to use since it is very balenced , 1:1 (https://www.kaggle.com/datasets/nelgiriyewithana/credit-card-fraud-detection-dataset-2023)
 
 # Download latest version
 path = kagglehub.dataset_download("nelgiriyewithana/credit-card-fraud-detection-dataset-2023")
 
 # Load the dataset
 df = pd.read_csv(path+ "/creditcard_2023.csv")
-# Need some way to reduce the dimensaonality of the dataset 
+n_bits = 6 # number of bits per feature
+n_levels = 2 ** n_bits # the number of possible levels for each feature
+
+if type_of_conversion not in ["threshold", "gaussian", "q"]:
+    raise ValueError("type_of_conversion must be either 'threshold' or 'gaussian'")
+elif type_of_conversion == "gaussian":
+    em = be.binaryEmbeddings(openai_api_key=OPENAI_KEY, cacheName="embeddingCache.json", numberBinaryDigits=28)
+elif type_of_conversion == "q":
+    # bins_per_feature will be a list of 28 arrays, each of length (n_levels+1)
+    bins_per_feature = []
+    for feat_idx in range(28):
+        col = df[f"V{feat_idx+1}"].values
+        # define bin‐edges so that you get n_levels “buckets” between min and max
+        edges = np.linspace(col.min(), col.max(), num=n_levels+1) # calc range
+        bins_per_feature.append(edges)
+
+    def quantize_vector(feat_vec, bins_list, n_bits=3):
+        """feat_vec shape=(28,), bins_list is length‐28 list of edges arrays."""
+        code_bits = []
+        for v, edges in zip(feat_vec, bins_list):
+            # np.digitize returns an integer in [1..len(edges)], so subtract 1
+            level = np.digitize(v, edges) - 1  
+            # clip just in case
+            level = max(0, min(level, n_levels-1))
+            # turn into n_bits binary string
+            code_bits.extend(int(b) for b in format(level, f"0{n_bits}b"))
+        return code_bits
+np.random.seed(42)  # For reproducibility
 
 # Vs 0-28 are anonymized features such as time, location, and other transaction details. I am going to be refering to v1 to v28 as feature embeddings.
 
@@ -39,23 +71,38 @@ def float_to_binary(embedding, threshold=0):  # The most basic conversion functi
 
 
 def convertAmountToBinary(amount):
-    normalized_amount = (amount - df["Amount"].min()) / (df["Amount"].max() - df["Amount"].min())
+    normalized_amount = (amount - df["Amount"].min()) / (df["Amount"].max() - df["Amount"].min()) # Normalize the amount using the formula: (value - min) / (max - min)
     int_amount = int(normalized_amount * (2**20 - 1))  # Scale to fit in 20 bits
     binary_amount = format(int(int_amount), "020b")
     return binary_amount
 
 def convertFeatureEmbeddingToBinary(feature_embedding):
-    # Convert the feature embedding to binary using Gaussian random projection. This is using our ao embeddings library where we had sucess with word embeddings
-    binary_code = float_to_binary(feature_embedding)
+    """Converts a feature embedding to a binary embedding"""
+    if type_of_conversion == "threshold":
+        binary_code = float_to_binary(feature_embedding)#
+    elif type_of_conversion == "gaussian":
+        # Gaussian random projection to binary
+        # mean = np.mean(feature_embedding)
+        # std_dev = np.std(feature_embedding)
+        # gaussian_projection = (feature_embedding - mean) / std_dev
+        # binary_code = float_to_binary(gaussian_projection, threshold=0)
+
+        binary_code = em.embeddingToBinary(feature_embedding)
+    elif type_of_conversion == "q":
+        binary_code = quantize_vector(feature_embedding, bins_per_feature, n_bits)
+
     return binary_code
 
-def runTrials(Number_trials):
+def runAOModel(Number_trials):
     correct = 0
 
     num_train = Number_trials*0.8
     num_test = Number_trials*0.2
 
-    Arch = ao.Arch(arch_i=[20,28], arch_z=[10])
+    if type_of_conversion == "q":
+        Arch = ao.Arch(arch_i=[(28*n_bits),20], arch_z=[10])
+    else:
+        Arch = ao.Arch(arch_i=[28,20], arch_z=[10])
     Agent = ao.Agent(Arch=Arch)
 
     training_df = df.sample(frac=0.8, random_state=42)  # 80% for training
@@ -64,7 +111,8 @@ def runTrials(Number_trials):
 
     train_inputs = []
     train_outputs = []
-    for row in training_df[0:int(num_train)].iterrows():
+    for i, row in enumerate(training_df[0:int(num_train)].iterrows()):
+
         amount  = row[1]["Amount"]
         class_type = row[1]["Class"]
         feature_embedding  = row[1][1:29].values  # V1 to V28
@@ -90,7 +138,7 @@ def runTrials(Number_trials):
 
 
         if row[0] % 100 == 0:
-            print("Trial: ", row[0])
+            print("Trial: ", i)
 
     Agent.next_state_batch(INPUT=train_inputs, LABEL=train_outputs, unsequenced=True)
 
@@ -139,11 +187,26 @@ def runTrials(Number_trials):
     print("amount correct: ", correct/num_test)
     return correct/num_test
 
+def runTrials(Number_trials):
+    ao_acc = runAOModel(Number_trials)
+    return ao_acc
+
+
 if __name__ == "__main__":
-    trials_array= [10,100,1000]
+    trials_array= [10, 100, 1000]
     acc_array = []
+    times_array = []
     for trials in trials_array:
+        now = datetime.now()
         print("Running trials: ", trials)
         acc = runTrials(trials)
         acc_array.append(acc)
         print("Accuracy for trials ", trials, ": ", acc)
+        later = datetime.now()
+        time_diff = later - now
+        times_array.append(time_diff.total_seconds())
+
+    results = []
+    for i in range(len(trials_array)):
+        results.append((trials_array[i], acc_array[i], times_array[i]))
+    print("Results: ", results)

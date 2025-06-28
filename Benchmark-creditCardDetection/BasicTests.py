@@ -30,7 +30,7 @@ df = df.sample(frac=1, random_state=42).reset_index()
 # 2) SPLIT INTO TRAIN / TEST
 # -----------------------------
 # Assume exactly 1000 rows for consistency with your code; if you have more, adjust accordingly
-Number_trials = 10000
+Number_trials = 1000
 df = df.iloc[:Number_trials]  # (optional) limit to first 1000 rows
 
 # 80% train / 20% test
