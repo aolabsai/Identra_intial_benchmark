@@ -6,7 +6,7 @@ from config import OPENAI_KEY
 import numpy as np
 from datetime import datetime
 
-type_of_conversion = "q"    # or "gaussian" for Gaussian random projection. Threshold seems to work better 
+type_of_conversion = "q"    # "gaussian", "threshold", or "q" q for quantization
 
 
 # This seems like the best dataset to use since it is very balenced , 1:1 (https://www.kaggle.com/datasets/nelgiriyewithana/credit-card-fraud-detection-dataset-2023)
@@ -16,7 +16,8 @@ path = kagglehub.dataset_download("nelgiriyewithana/credit-card-fraud-detection-
 
 # Load the dataset
 df = pd.read_csv(path+ "/creditcard_2023.csv")
-n_bits = 6 # number of bits per feature
+
+n_bits = 2 # number of bits per feature
 n_levels = 2 ** n_bits # the number of possible levels for each feature
 
 if type_of_conversion not in ["threshold", "gaussian", "q"]:
@@ -43,7 +44,6 @@ elif type_of_conversion == "q":
             # turn into n_bits binary string
             code_bits.extend(int(b) for b in format(level, f"0{n_bits}b"))
         return code_bits
-np.random.seed(42)  # For reproducibility
 
 # Vs 0-28 are anonymized features such as time, location, and other transaction details. I am going to be refering to v1 to v28 as feature embeddings.
 
@@ -159,7 +159,8 @@ def runAOModel(Number_trials):
 
         input_data = np.append(binary_embedding, binary_amount)  # Combine the binary embedding with the binary amount
 
-        for i in range(5): # For convergence, we will run the agent 5 times
+        Agent.next_state(INPUT=input_data, unsequenced=True)  # We are not training here, so we set LABEL to None
+        for i in range(2): # For convergence, we will run the agent 5 times
             raw_response = Agent.next_state(INPUT=input_data)
 
         Agent.reset_state()
@@ -173,10 +174,12 @@ def runAOModel(Number_trials):
 
         # Uncomment if we want to train in real-time
 
-        # if class_type == 1:
-        #     Agent.next_state(INPUT=input_data, LABEL=[1,1,1,1,1,1,1,1,1,1])
-        # else:
-        #     Agent.next_state(INPUT=input_data, LABEL=[0,0,0,0,0,0,0,0,0,0])
+        if class_type == 1:
+            Agent.next_state(INPUT=input_data, LABEL=[1,1,1,1,1,1,1,1,1,1])
+        else:
+            Agent.next_state(INPUT=input_data, LABEL=[0,0,0,0,0,0,0,0,0,0])
+
+            ##
 
         if response == class_type:
             correct += 1
@@ -193,7 +196,7 @@ def runTrials(Number_trials):
 
 
 if __name__ == "__main__":
-    trials_array= [10, 100, 1000]
+    trials_array= [10, 100]
     acc_array = []
     times_array = []
     for trials in trials_array:
