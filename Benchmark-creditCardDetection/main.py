@@ -6,8 +6,7 @@ from config import OPENAI_KEY
 import numpy as np
 from datetime import datetime
 
-type_of_conversion = "q"    # "gaussian", "threshold", or "q" q for quantization
-
+type_of_conversion = "threshold"    # "gaussian", "threshold", or "q" q for quantization
 
 # This seems like the best dataset to use since it is very balenced , 1:1 (https://www.kaggle.com/datasets/nelgiriyewithana/credit-card-fraud-detection-dataset-2023)
 
@@ -62,8 +61,6 @@ elif type_of_conversion == "q":
 
 df = df.sample(frac=1).reset_index()
 
-correct = 0
-
 def float_to_binary(embedding, threshold=0):  # The most basic conversion function. if input is greater than threshold, it will be 1, else 0
   """Converts a float32 embedding to a binary embedding."""
   binary_embedding = np.where(embedding > threshold, 1, 0)
@@ -104,6 +101,10 @@ def runAOModel(Number_trials):
     else:
         Arch = ao.Arch(arch_i=[28,20], arch_z=[10])
     Agent = ao.Agent(Arch=Arch)
+
+    for i in range(4):
+        Agent.reset_state(training=True) # Randomly train agent
+        Agent.reset_state()
 
     training_df = df.sample(frac=0.8, random_state=42)  # 80% for training
     test_df = df.drop(training_df.index)  # Remaining 20% for testing
@@ -196,7 +197,7 @@ def runTrials(Number_trials):
 
 
 if __name__ == "__main__":
-    trials_array= [10, 100]
+    trials_array= [10, 100, 1000]
     acc_array = []
     times_array = []
     for trials in trials_array:
